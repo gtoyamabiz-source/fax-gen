@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAX送信票ジェネレーター</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* 印刷時の用紙設定とレイアウト崩れ防止 */
+    @media print {
+      body {
+        background-color: #fff !important;
+        color: #000 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: white !important;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+    }
+    
+    /* スクロールバーの調整 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col">
+
+  <!-- --- トースト通知表示 (no-print) --- -->
+  <div id="toast" class="no-print fixed top-5 right-5 z-50 hidden flex max-w-sm items-start gap-2 px-4 py-3 rounded-lg shadow-lg text-sm text-white font-semibold transition-all duration-300 bg-slate-900 border border-slate-800">
+    <i id="toast-icon-success" data-lucide="check-circle" class="h-5 w-5 text-emerald-400 shrink-0 mt-0.5 hidden"></i>
+    <i id="toast-icon-error" data-lucide="alert-triangle" class="h-5 w-5 text-rose-400 shrink-0 mt-0.5 hidden"></i>
+    <i id="toast-icon-info" data-lucide="clock" class="h-5 w-5 text-blue-400 shrink-0 mt-0.5 hidden"></i>
+    <div>
+      <p id="toast-message" class="leading-tight"></p>
+    </div>
+  </div>
+
+  <!-- --- ヘッダー (no-print) --- -->
+  <header class="no-print bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="bg-blue-600 p-2 rounded-lg text-white">
+          <i data-lucide="printer" class="h-6 w-6"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">FAX送信票ジェネレーター</h1>
+          <p class="text-xs text-slate-400">バルカートルクシステム株式会社様向け 1枚完璧収まり仕様</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <button
+          onclick="loadSampleData()"
+          class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+          title="デモ用のサンプルデータを読み込みます"
+        >
+          <i data-lucide="file-text" class="h-3.5 w-3.5"></i>
+          <span>サンプル読込</span>
+        </button>
+
+        <button
+          onclick="openResetConfirm()"
+          class="px-3 py-1.5 bg-slate-700 hover:bg-slate-650 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+          title="宛先や件名・連絡事項をクリアします"
+        >
+          <i data-lucide="rotate-ccw" class="h-3.5 w-3.5"></i>
+          <span>リセット</span>
+        </button>
+
+        <button
+          onclick="toggleHelp()"
+          class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+          title="ヘルプを表示"
+        >
+          <i data-lucide="help-circle" class="h-5 w-5"></i>
+        </button>
+
+        <button
+          onclick="handlePrint()"
+          class="px-4 py-1.5 bg-blue-650 hover:bg-blue-600 rounded-lg text-sm font-semibold text-white shadow-md hover:shadow transition flex items-center gap-2 animate-pulse bg-blue-600"
+          title="新しいウィンドウで印刷画面を開きます"
+        >
+          <i data-lucide="printer" class="h-4 w-4"></i>
+          <span>印刷 / PDF出力</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- --- ヘルプパネル (no-print) --- -->
+  <div id="help-panel" class="no-print bg-blue-50 border-b border-blue-200 text-blue-900 px-4 py-3 hidden">
+    <div class="max-w-7xl mx-auto flex justify-between items-start">
+      <div class="text-sm space-y-1">
+        <p class="font-semibold">💡 改修ポイント & 使い方ガイド</p>
+        <ul class="list-disc list-inside space-y-0.5 text-blue-850 text-xs font-sans">
+          <li><strong>送信先プリセット</strong>: よく送信する宛先情報を登録し、セレクトボックスから一発で呼び出せます。</li>
+          <li><strong>送信元は固定設定</strong>: バルカートルクシステム様情報（厚木長谷）が標準入力されます。</li>
+          <li><strong>番号表示 of 調整</strong>: TEL / FAX と各番号を左寄せにして、より読み取りやすく整理しました。</li>
+          <li><strong>高精度溢れ検知</strong>: ブラウザによる僅かな誤検出を防ぎ、A4用紙1枚への完璧な収まりをより忠実にサポートします。</li>
+        </ul>
+      </div>
+      <button 
+        onclick="toggleHelp()" 
+        class="text-blue-500 hover:text-blue-700 font-bold text-xs"
+      >
+        閉じる
+      </button>
+    </div>
+  </div>
+
+  <!-- --- メインコンテンツ領域 --- -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 flex flex-col lg:flex-row gap-6 overflow-hidden">
+    
+    <!-- モバイル表示時のタブ切り替え (no-print) -->
+    <div class="no-print lg:hidden flex border-b border-slate-300 bg-white rounded-t-lg overflow-hidden shrink-0">
+      <button
+        id="tab-edit-btn"
+        onclick="switchTab('edit')"
+        class="flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 bg-blue-50 text-blue-600 border-b-2 border-blue-600"
+      >
+        <i data-lucide="edit-3" class="h-4 w-4"></i>
+        <span>入力・設定</span>
+      </button>
+      <button
+        id="tab-preview-btn"
+        onclick="switchTab('preview')"
+        class="flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 text-slate-600 bg-slate-50"
+      >
+        <i data-lucide="eye" class="h-4 w-4"></i>
+        <span>A4プレビュー</span>
+      </button>
+    </div>
+
+    <!-- --- 1. 左側：フォーム入力部 (no-print) --- -->
+    <div id="sidebar-panel" class="no-print flex-1 lg:w-5/12 bg-white rounded-xl shadow-sm border border-slate-200 overflow-y-auto p-5 space-y-6">
+      
+      <!-- 送信先（TO）のプリセット選択＆保存 -->
+      <div class="bg-blue-50/40 p-3.5 rounded-lg border border-blue-100 space-y-3 font-sans">
+        <div class="flex justify-between items-center">
+          <label class="text-xs font-bold text-slate-700 flex items-center gap-1">
+            <i data-lucide="user-plus" class="h-3.5 w-3.5 text-blue-600"></i>
+            <span>送信先の呼び出し・保存（宛先プリセット）</span>
+          </label>
+          <button
+            onclick="handleOpenPresetModal()"
+            class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+            title="現在入力されている送信先をプリセットとして保存します"
+          >
+            <i data-lucide="plus" class="h-3 w-3"></i>
+            <span>宛先を保存</span>
+          </button>
+        </div>
+        
+        <div class="flex gap-2">
+          <select
+            id="to-preset-select"
+            onchange="loadToPreset(this.value)"
+            class="flex-1 bg-white border border-slate-300 rounded-md px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-sans"
+          >
+            <option value="">-- 送信先プリセットから呼び出す --</option>
+          </select>
+          <button
+            id="delete-preset-btn"
+            onclick="requestDeleteToPreset()"
+            class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded border border-slate-200 transition hidden"
+            title="選択中の宛先プリセットを削除"
+          >
+            <i data-lucide="trash-2" class="h-4 w-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 送信先 (To) セクション -->
+      <div class="space-y-4 font-sans">
+        <h3 class="text-sm font-bold text-slate-800 border-b pb-1.5 flex items-center gap-2">
+          <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">宛先</span>
+          <span>送信先情報 (TO)</span>
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">宛先 会社名</label>
+            <input
+              type="text"
+              id="input-toCompany"
+              placeholder="例：株式会社 〇〇"
+              oninput="syncInput('toCompany', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">部署・役職</label>
+            <input
+              type="text"
+              id="input-toDept"
+              placeholder="例：購買部"
+              oninput="syncInput('toDept', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1 md:col-span-2">
+            <label class="text-xs font-medium text-slate-600">お名前・敬称</label>
+            <div class="flex gap-2">
+              <input
+                type="text"
+                id="input-toName"
+                placeholder="例：山田 太郎"
+                oninput="syncInput('toName', this.value)"
+                class="flex-1 border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+              />
+              <select
+                id="input-toHonorific"
+                onchange="syncInput('toHonorific', this.value)"
+                class="w-24 border border-slate-300 rounded px-2 py-1.5 text-sm bg-slate-50 focus:ring-1 focus:ring-blue-500 font-sans"
+              >
+                <option value="様">様</option>
+                <option value="御中">御中</option>
+                <option value="行">行</option>
+                <option value="宛">宛</option>
+                <option value="先生">先生</option>
+                <option value="">（敬称なし）</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">FAX番号 <span class="text-red-500 text-[10px]">必須</span></label>
+            <input
+              type="tel"
+              id="input-toFax"
+              placeholder="例：03-1234-5678"
+              oninput="syncInput('toFax', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm font-mono focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">電話番号</label>
+            <input
+              type="tel"
+              id="input-toTel"
+              placeholder="例：03-1234-5670"
+              oninput="syncInput('toTel', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm font-mono focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 送信元 (From) セクション (バルカートルクシステム様 デフォルト設定) -->
+      <div class="space-y-4 font-sans">
+        <h3 class="text-sm font-bold text-slate-800 border-b pb-1.5 flex items-center gap-2">
+          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-xs">発信</span>
+          <span>送信元情報 (FROM)</span>
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div class="space-y-1 md:col-span-2">
+            <label class="text-xs font-medium text-slate-500">会社名 (固定)</label>
+            <input
+              type="text"
+              id="input-fromCompany"
+              oninput="syncInput('fromCompany', this.value)"
+              class="w-full border border-slate-200 bg-slate-50 rounded px-2.5 py-1.5 text-sm font-bold focus:ring-1 focus:ring-blue-500 text-slate-700 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">部署・グループ等</label>
+            <input
+              type="text"
+              id="input-fromDept"
+              placeholder="例：営業第一グループ"
+              oninput="syncInput('fromDept', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600">差出人お名前</label>
+            <input
+              type="text"
+              id="input-fromName"
+              placeholder="例：厚木 太郎"
+              oninput="syncInput('fromName', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-500">送信元 FAX (固定)</label>
+            <input
+              type="tel"
+              id="input-fromFax"
+              oninput="syncInput('fromFax', this.value)"
+              class="w-full border border-slate-200 bg-slate-50 rounded px-2.5 py-1.5 text-sm font-mono text-slate-700"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-500">送信元 TEL (固定)</label>
+            <input
+              type="tel"
+              id="input-fromTel"
+              oninput="syncInput('fromTel', this.value)"
+              class="w-full border border-slate-200 bg-slate-50 rounded px-2.5 py-1.5 text-sm font-mono text-slate-700"
+            />
+          </div>
+
+          <div class="space-y-1 md:col-span-2">
+            <label class="text-xs font-medium text-slate-500">所在地 (固定)</label>
+            <input
+              type="text"
+              id="input-fromAddress"
+              oninput="syncInput('fromAddress', this.value)"
+              class="w-full border border-slate-200 bg-slate-50 rounded px-2.5 py-1.5 text-xs text-slate-700 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1 md:col-span-2">
+            <label class="text-xs font-medium text-slate-600">E-mail</label>
+            <input
+              type="email"
+              id="input-fromEmail"
+              placeholder="例：bts@example.co.jp"
+              oninput="syncInput('fromEmail', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm font-mono focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 送信設定（日付・枚数） -->
+      <div class="space-y-4 font-sans">
+        <h3 class="text-sm font-bold text-slate-800 border-b pb-1.5 flex items-center gap-2">
+          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-xs">設定</span>
+          <span>送信条件・日付設定</span>
+        </h3>
+
+        <div class="space-y-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+          
+          <!-- 日付コントロール -->
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-medium text-slate-700">送信日入力方法</span>
+              
+              <div class="flex bg-slate-200 rounded-lg p-0.5 text-[11px] font-medium">
+                <button
+                  type="button"
+                  id="dateType-auto-btn"
+                  onclick="changeDateType('auto')"
+                  class="px-2 py-1 rounded-md transition bg-white shadow text-blue-600"
+                >
+                  カレンダー選択
+                </button>
+                <button
+                  type="button"
+                  id="dateType-free-btn"
+                  onclick="changeDateType('free')"
+                  class="px-2 py-1 rounded-md transition text-slate-600"
+                >
+                  自由記述
+                </button>
+              </div>
+            </div>
+
+            <!-- カレンダーコンテナ -->
+            <div id="date-auto-container" class="space-y-2">
+              <div class="flex gap-2">
+                <div class="relative flex-1">
+                  <input
+                    type="date"
+                    id="input-dateVal"
+                    onchange="syncInput('dateVal', this.value)"
+                    class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm pl-8 focus:ring-1 focus:ring-blue-500 font-sans"
+                  />
+                  <i data-lucide="calendar" class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400"></i>
+                </div>
+                
+                <!-- 西暦・和暦切替 -->
+                <select
+                  id="input-dateEraFormat"
+                  onchange="syncInput('dateEraFormat', this.value)"
+                  class="border border-slate-300 rounded px-2 py-1.5 text-xs bg-white focus:ring-1 focus:ring-blue-500 font-sans"
+                >
+                  <option value="seireki">西暦表記</option>
+                  <option value="wareki">和暦表記</option>
+                </select>
+              </div>
+
+              <!-- クイック日付ボタン -->
+              <div class="flex flex-wrap gap-1.5 text-[10px]">
+                <button
+                  type="button"
+                  onclick="setQuickDate(0)"
+                  class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-200 flex items-center gap-1 font-sans"
+                >
+                  <i data-lucide="clock" class="h-3 w-3 text-blue-500"></i>
+                  今日
+                </button>
+                <button
+                  type="button"
+                  onclick="setQuickDate(1)"
+                  class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-200 font-sans"
+                >
+                  明日
+                </button>
+                <button
+                  type="button"
+                  onclick="setQuickDate(2)"
+                  class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded border border-slate-200 font-sans"
+                >
+                  明後日
+                </button>
+              </div>
+            </div>
+
+            <!-- 自由記述コンテナ -->
+            <div id="date-free-container" class="space-y-1 hidden">
+              <input
+                type="text"
+                id="input-dateFreeText"
+                placeholder="例：2026年6月吉日"
+                oninput="syncInput('dateFreeText', this.value)"
+                class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+              />
+              <p class="text-[10px] text-slate-500 font-sans">※ここに入力した文言が日付欄にそのまま表示されます。</p>
+            </div>
+          </div>
+
+          <!-- 枚数コントロール -->
+          <div class="space-y-1 pt-1 border-t border-slate-200">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-medium text-slate-700">総送信枚数（本状含む）</label>
+              <div class="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onclick="adjustPages(-1)"
+                  class="w-7 h-7 bg-white border rounded hover:bg-slate-100 flex items-center justify-center font-bold text-sm"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  id="input-pagesCount"
+                  oninput="syncInput('pagesCount', parseInt(this.value) || 1)"
+                  class="w-12 border border-slate-300 rounded py-1 text-center text-sm font-semibold focus:ring-1 focus:ring-blue-500 font-sans"
+                />
+                <span class="text-xs text-slate-500 pr-1">枚</span>
+                <button
+                  type="button"
+                  onclick="adjustPages(1)"
+                  class="w-7 h-7 bg-white border rounded hover:bg-slate-100 flex items-center justify-center font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 用件チェック -->
+        <div class="space-y-2">
+          <label class="text-xs font-medium text-slate-600 block">用件（送信票にチェックを入れます）</label>
+          <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="input-isUrgent"
+                onchange="syncInput('isUrgent', this.checked)"
+                class="rounded text-blue-600 border-slate-300 focus:ring-blue-500 h-4 w-4"
+              />
+              <span class="font-semibold bg-red-100 text-red-700 px-1 py-0.5 rounded text-[10px]">至急</span>
+            </label>
+
+            <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="input-isReplyRequired"
+                onchange="syncInput('isReplyRequired', this.checked)"
+                class="rounded text-blue-600 border-slate-300 focus:ring-blue-500 h-4 w-4"
+              />
+              <span class="font-semibold bg-blue-100 text-blue-700 px-1 py-0.5 rounded text-[10px]">要返信</span>
+            </label>
+
+            <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="input-isCheckRequired"
+                onchange="syncInput('isCheckRequired', this.checked)"
+                class="rounded text-blue-600 border-slate-300 focus:ring-blue-500 h-4 w-4"
+              />
+              <span class="font-semibold bg-green-100 text-green-700 px-1 py-0.5 rounded text-[10px]">ご確認ください</span>
+            </label>
+
+            <label class="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="input-isForReference"
+                onchange="syncInput('isForReference', this.checked)"
+                class="rounded text-blue-600 border-slate-300 focus:ring-blue-500 h-4 w-4"
+              />
+              <span class="font-semibold bg-gray-150 text-gray-700 px-1 py-0.5 rounded text-[10px]">ご参考</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- A4レイアウト微調整セクション -->
+      <div class="space-y-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100 font-sans">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="sliders" class="h-4 w-4 text-blue-600"></i>
+          <span>A4レイアウト微調整（1枚に収める）</span>
+        </h3>
+
+        <div class="space-y-3 pt-1">
+          <!-- 全体の余白量調整 -->
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-700 flex justify-between">
+              <span>全体のレイアウト余白</span>
+              <span id="spacing-label" class="text-blue-600 font-bold text-[11px]">標準 (18mm)</span>
+            </label>
+            <div class="flex bg-white rounded-lg p-0.5 border text-xs">
+              <button
+                type="button"
+                id="spacing-tight-btn"
+                onclick="syncInput('printSpacing', 'tight')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                狭い
+              </button>
+              <button
+                type="button"
+                id="spacing-normal-btn"
+                onclick="syncInput('printSpacing', 'normal')"
+                class="flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow"
+              >
+                標準
+              </button>
+              <button
+                type="button"
+                id="spacing-loose-btn"
+                onclick="syncInput('printSpacing', 'loose')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                広い
+              </button>
+            </div>
+          </div>
+
+          <!-- 連絡メッセージの文字サイズ調整 -->
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-700 flex justify-between">
+              <span>メッセージ欄の文字サイズ</span>
+              <span id="font-size-label" class="text-blue-600 font-bold text-[11px]">小さめ (12px)</span>
+            </label>
+            <div class="flex bg-white rounded-lg p-0.5 border text-xs">
+              <button
+                type="button"
+                id="fontSize-xs-btn"
+                onclick="syncInput('printFontSize', 'text-xs')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                極小
+              </button>
+              <button
+                type="button"
+                id="fontSize-sm-btn"
+                onclick="syncInput('printFontSize', 'text-sm')"
+                class="flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow"
+              >
+                小さめ
+              </button>
+              <button
+                type="button"
+                id="fontSize-base-btn"
+                onclick="syncInput('printFontSize', 'text-base')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                標準
+              </button>
+              <button
+                type="button"
+                id="fontSize-lg-btn"
+                onclick="syncInput('printFontSize', 'text-lg')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                大きめ
+              </button>
+            </div>
+          </div>
+
+          <!-- 連絡メッセージの行間調整 -->
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-700 flex justify-between">
+              <span>メッセージ欄の行間</span>
+              <span id="line-height-label" class="text-blue-600 font-bold text-[11px]">広め</span>
+            </label>
+            <div class="flex bg-white rounded-lg p-0.5 border text-xs">
+              <button
+                type="button"
+                id="lineHeight-snug-btn"
+                onclick="syncInput('printLineHeight', 'leading-snug')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                狭め
+              </button>
+              <button
+                type="button"
+                id="lineHeight-normal-btn"
+                onclick="syncInput('printLineHeight', 'leading-normal')"
+                class="flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100"
+              >
+                標準
+              </button>
+              <button
+                type="button"
+                id="lineHeight-relaxed-btn"
+                onclick="syncInput('printLineHeight', 'leading-relaxed')"
+                class="flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow"
+              >
+                広め
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- データ管理（バックアップ・復元）(no-print) -->
+      <div class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 font-sans no-print">
+        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="database" class="h-4 w-4 text-slate-600"></i>
+          <span>データのバックアップ・復元</span>
+        </h3>
+        <p class="text-[11px] text-slate-500 leading-relaxed">
+          登録した送信先プリセットや入力した内容をファイルに保存して、後から完全に復元できます。（ブラウザ履歴消去対策）
+        </p>
+        <div class="flex gap-2">
+          <button
+            onclick="exportBackupData()"
+            class="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded border border-slate-300 transition flex items-center justify-center gap-1"
+            title="データをJSONファイルとしてダウンロードします"
+          >
+            <i data-lucide="download" class="h-3.5 w-3.5 text-blue-600"></i>
+            <span>バックアップ</span>
+          </button>
+          <button
+            onclick="triggerImport()"
+            class="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded border border-slate-300 transition flex items-center justify-center gap-1"
+            title="保存したバックアップファイルを読み込みます"
+          >
+            <i data-lucide="upload" class="h-3.5 w-3.5 text-emerald-600"></i>
+            <span>復元・インポート</span>
+          </button>
+          <input
+            type="file"
+            id="import-file-input"
+            onchange="importBackupData(event)"
+            class="hidden"
+            accept=".json"
+          />
+        </div>
+      </div>
+
+      <!-- 件名・本文 -->
+      <div class="space-y-4 font-sans">
+        <h3 class="text-sm font-bold text-slate-800 border-b pb-1.5 flex items-center gap-2">
+          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-xs">本文</span>
+          <span>件名および連絡事項</span>
+        </h3>
+
+        <div class="space-y-3.5">
+          <div class="space-y-1">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-medium text-slate-600 font-sans">件名（タイトル）</label>
+              <!-- 件名プリセット -->
+              <select
+                onchange="if(this.value) { syncInput('subject', this.value); document.getElementById('input-subject').value = this.value; }"
+                class="text-[10px] text-slate-500 bg-slate-50 border-none p-0 focus:ring-0 cursor-pointer font-sans"
+              >
+                <option value="">-- 定型文から選択 --</option>
+                <option value="お見積書の件">お見積書の件</option>
+                <option value="資料送付の件">資料送付の件</option>
+                <option value="ご注文書の件">ご注文書の件</option>
+                <option value="お打ち合わせの件">お打ち合わせの件</option>
+                <option value="急用の件">急用の件</option>
+              </select>
+            </div>
+            <input
+              type="text"
+              id="input-subject"
+              placeholder="例：御見積書送付の件"
+              oninput="syncInput('subject', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm font-bold focus:ring-1 focus:ring-blue-500 font-sans"
+            />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-slate-600 font-sans">連絡事項・送信メッセージ</label>
+            <textarea
+              id="input-message"
+              rows="7"
+              placeholder="送信案内や詳細事項など、メッセージを入力してください。"
+              oninput="syncInput('message', this.value)"
+              class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+            ></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- --- 2. 右側：A4ファックスプレビュー --- -->
+    <div id="preview-panel" class="flex-1 lg:w-7/12 flex flex-col items-center overflow-y-auto hidden lg:flex">
+      
+      <!-- プレビュー上部のアクションバー (no-print) -->
+      <div class="no-print w-full max-w-[740px] bg-slate-200 border-b border-slate-300 px-4 py-2 flex justify-between items-center rounded-t-xl shrink-0">
+        <div class="flex items-center space-x-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+          <span class="text-xs font-semibold text-slate-600 pl-1 font-sans">A4縦・送信表プレビュー</span>
+        </div>
+        
+        <div class="flex items-center">
+          <span id="status-overflow" class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded border border-red-300 flex items-center gap-1 animate-pulse font-sans hidden">
+            <i data-lucide="alert-triangle" class="h-3 w-3"></i>
+            <span>A4枠からあふれています！設定を調整してください</span>
+          </span>
+          <span id="status-ok" class="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-1 rounded border border-emerald-200 flex items-center gap-1 font-sans">
+            <i data-lucide="check-circle" class="h-3 w-3"></i>
+            <span>A4 1枚に美しく収まっています</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- A4 FAX送信票本体 - 高さを h-[1046px]（比率 1:1.414）に完全固定 -->
+      <div 
+        id="print-area-element"
+        class="print-area w-full max-w-[740px] h-[1046px] bg-white text-black shadow-md border-x border-b border-slate-250 flex flex-col justify-between font-serif relative overflow-hidden transition-all duration-200 p-[18mm]"
+      >
+        
+        <!-- メインの送信表レイアウト部分 -->
+        <div class="flex-1 flex flex-col justify-start overflow-hidden">
+          
+          <!-- === 【完全装飾なし・究極にミニマルで洗練されたタイトルエリア】 === -->
+          <div id="preview-title-wrap" class="text-center mb-3.5 shrink-0">
+            <h2 class="text-xl md:text-2xl font-extrabold tracking-[0.4em] text-center text-black pl-[0.4em] leading-tight select-none font-serif">
+              ファックス送信のご案内
+            </h2>
+          </div>
+
+          <!-- === ヘッダーメタ情報（日付・枚数） === -->
+          <div id="preview-meta-wrap" class="flex justify-between items-start text-xs md:text-sm font-sans mb-3.5 shrink-0">
+            <div></div>
+            <div class="w-56 text-right space-y-0.5 bg-white p-0.5 border-b border-black">
+              <div class="flex justify-between pb-0.5 text-[11px] md:text-xs font-sans">
+                <span class="text-gray-500">送信日：</span>
+                <span id="preview-date" class="font-bold text-black">未入力</span>
+              </div>
+              <div class="flex justify-between pb-0.5 text-[11px] md:text-xs font-sans">
+                <span class="text-gray-500">送信枚数：</span>
+                <span class="font-bold text-black">
+                  本紙含め <strong id="preview-pages" class="text-sm font-extrabold font-mono">1</strong> 枚
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- === 送信先 (To) ＆ 送信元 (From) 枠エリア === -->
+          <div id="preview-grid-wrap" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4.5 font-sans shrink-0 border-y border-black py-3.5">
+            
+            <!-- 送信先 (To) -->
+            <div class="space-y-1.5 flex flex-col justify-between md:border-r border-gray-300 md:pr-4 pb-3.5 md:pb-0">
+              <div>
+                <div class="text-[10px] font-bold text-black border-l-2 border-black pl-1.5 mb-1 bg-gray-100 py-0.5 font-sans">宛先 TO</div>
+                <div class="space-y-0.5 font-sans">
+                  <div id="preview-toCompany" class="text-sm md:text-base font-extrabold tracking-wide text-black leading-tight">
+                    <span class="text-gray-300 font-normal">（送信先会社名）</span>
+                  </div>
+                  <div id="preview-toDept" class="text-xs font-semibold text-gray-700">
+                    <span class="text-gray-300 font-normal">（部署名）</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="pt-2.5 pb-1 flex items-baseline border-b border-gray-300 font-sans">
+                <span id="preview-toName" class="text-base md:text-lg font-black mr-2 text-black">
+                  <span class="text-gray-300 font-normal">（ご担当者名）</span>
+                </span>
+                <span id="preview-toHonorific" class="text-xs font-bold text-gray-750">様</span>
+              </div>
+
+              <!-- 番号をTEL/FAXラベルに寄せて左寄せ表示 -->
+              <div class="space-y-0.5 text-[11px] md:text-xs pt-1 font-sans">
+                <div class="flex justify-start items-center">
+                  <span class="text-gray-500 w-10 shrink-0 select-none">FAX:</span>
+                  <span id="preview-toFax" class="font-extrabold font-mono text-black text-sm">
+                    <span class="text-gray-300 font-normal font-sans text-xs">未入力</span>
+                  </span>
+                </div>
+                <div class="flex justify-start items-center">
+                  <span class="text-gray-500 w-10 shrink-0 select-none">TEL:</span>
+                  <span id="preview-toTel" class="font-mono text-gray-750">ー</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 送信元 (From) - バルカートルクシステム様 デフォルト -->
+            <div class="space-y-1.5 flex flex-col justify-between md:pl-2">
+              <div>
+                <div class="text-[10px] font-bold text-black border-l-2 border-black pl-1.5 mb-1 bg-gray-100 py-0.5 font-sans">発信 FROM</div>
+                <div class="space-y-0.5 font-sans">
+                  <div id="preview-fromCompany" class="text-xs md:text-sm font-extrabold text-black leading-tight">
+                    バルカートルクシステム株式会社
+                  </div>
+                  <div id="preview-fromDept" class="text-[11px] font-semibold text-gray-700 leading-tight">
+                    <!-- JSで書き込み -->
+                  </div>
+                  <div id="preview-fromName" class="text-xs font-extrabold text-black pt-0.5 leading-none">
+                    <!-- JSで書き込み -->
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-[10px] text-gray-600 space-y-0.5 border-t border-gray-200 pt-1.5 mt-1 font-sans">
+                <div id="preview-fromAddress" class="leading-tight truncate">〒243-0036 神奈川県厚木市長谷363-2</div>
+                <div id="preview-fromEmail" class="font-mono truncate hidden"></div>
+              </div>
+
+              <!-- 番号をTEL/FAXラベルに寄せて左寄せ表示 -->
+              <div class="space-y-0.5 text-[11px] md:text-xs pt-1 border-t border-gray-200 font-sans">
+                <div class="flex justify-start items-center">
+                  <span class="text-gray-500 w-10 shrink-0 select-none">FAX:</span>
+                  <span id="preview-fromFax" class="font-extrabold font-mono text-black">046-281-7622</span>
+                </div>
+                <div class="flex justify-start items-center">
+                  <span class="text-gray-500 w-10 shrink-0 select-none">TEL:</span>
+                  <span id="preview-fromTel" class="font-mono text-gray-750">046-281-7621</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- === 用件区分 === -->
+          <div id="preview-check-wrap" class="mb-3.5 font-sans shrink-0">
+            <div class="grid grid-cols-4 gap-0 border border-black text-center text-xs divide-x divide-black bg-white">
+              <div id="badge-urgent" class="py-1.5 flex items-center justify-center gap-2 font-sans">
+                <span class="text-[10px] font-bold tracking-wider text-black">至急</span>
+                <div class="flex items-center justify-center border border-black w-4 h-4 rounded-sm bg-white">
+                  <span id="check-urgent" class="font-black text-xs leading-none text-black hidden">✓</span>
+                </div>
+              </div>
+              <div id="badge-reply" class="py-1.5 flex items-center justify-center gap-2 font-sans">
+                <span class="text-[10px] font-bold tracking-wider text-black">要返信</span>
+                <div class="flex items-center justify-center border border-black w-4 h-4 rounded-sm bg-white">
+                  <span id="check-reply" class="font-black text-xs leading-none text-black hidden">✓</span>
+                </div>
+              </div>
+              <div id="badge-check" class="py-1.5 flex items-center justify-center gap-2 font-sans">
+                <span class="text-[10px] font-bold tracking-wider text-black">ご確認</span>
+                <div class="flex items-center justify-center border border-black w-4 h-4 rounded-sm bg-white">
+                  <span id="check-check" class="font-black text-xs leading-none text-black hidden">✓</span>
+                </div>
+              </div>
+              <div id="badge-reference" class="py-1.5 flex items-center justify-center gap-2 font-sans">
+                <span class="text-[10px] font-bold tracking-wider text-black">ご参考</span>
+                <div class="flex items-center justify-center border border-black w-4 h-4 rounded-sm bg-white">
+                  <span id="check-reference" class="font-black text-xs leading-none text-black hidden">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- === 件名 (Subject) エリア === -->
+          <div id="preview-subject-wrap" class="mb-3.5 font-sans shrink-0">
+            <div class="border-2 border-black flex items-stretch bg-white">
+              <div class="bg-gray-100 text-black font-extrabold text-xs px-4 py-2 flex flex-col items-center justify-center tracking-widest shrink-0 min-w-[100px] text-center border-r-2 border-black select-none font-sans">
+                <span>件名</span>
+                <span class="text-[8px] font-normal opacity-70 tracking-normal mt-0.5">SUBJECT</span>
+              </div>
+              <div class="px-3 py-1 flex-1 flex items-center min-h-[40px]">
+                <h3 id="preview-subject" class="text-base md:text-lg font-black tracking-wide text-black">
+                  <span class="text-gray-300 font-normal font-sans">（件名を入力してください）</span>
+                </h3>
+              </div>
+            </div>
+          </div>
+
+          <!-- === メッセージ本文エリア === -->
+          <div class="font-sans flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div class="border-2 border-black flex-1 flex flex-col min-h-0 bg-white">
+              <div class="bg-gray-100 text-black text-[11px] font-extrabold px-3 py-1 flex justify-between items-center shrink-0 border-b-2 border-black select-none font-sans">
+                <span class="tracking-widest font-sans">■ 連絡事項 / MESSAGE</span>
+                <span class="text-[8px] font-bold opacity-70 font-sans">BUSINESS FAX COMMUNICATION</span>
+              </div>
+              
+              <div 
+                id="preview-message-body"
+                class="p-4 flex-1 whitespace-pre-wrap text-black font-sans overflow-hidden transition-all duration-150 text-sm leading-relaxed"
+              >
+                <!-- メッセージはJSで挿入 -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- はみ出し警告インジケーター（A4プレビュー専用・no-print） -->
+        <div id="warning-overflow-bar" class="no-print absolute bottom-12 left-0 right-0 bg-red-650 text-white text-center py-2 text-xs font-bold shadow-lg flex items-center justify-center gap-1.5 animate-pulse z-10 font-sans hidden">
+          <i data-lucide="alert-triangle" class="h-4 w-4"></i>
+          <span>コメントがあふれています！微調整設定で文字を小さくするか、余白を「狭い」にしてください</span>
+        </div>
+
+        <!-- === フッター === -->
+        <div class="mt-4 pt-3 border-t border-gray-300 text-[10px] text-gray-500 font-sans flex justify-between items-center shrink-0 select-none">
+          <div class="max-w-[80%]">
+            <span>※万が一、本ファックスが誤って届いた場合は、恐れ入りますが送信元までご連絡の上、本状の破棄をお願い申し上げます。</span>
+          </div>
+          <div class="font-mono text-right whitespace-nowrap">
+            Printed by Fax Generator
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- --- カスタムリセット確認モーダル (no-print) --- -->
+  <div id="modal-reset" class="no-print fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl shadow-xl border w-full max-w-sm overflow-hidden scale-95 transition-all">
+      <div class="bg-slate-800 text-white px-4 py-3 font-semibold flex justify-between items-center">
+        <span class="flex items-center gap-2">
+          <i data-lucide="rotate-ccw" class="h-4 w-4 text-amber-400"></i>
+          <span>入力のリセット</span>
+        </span>
+        <button onclick="closeModal('modal-reset')" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      
+      <div class="p-5 space-y-4 font-sans">
+        <p class="text-sm text-slate-600 leading-relaxed">
+          入力されている宛先・本文内容を初期化してもよろしいですか？<br />
+          <span class="text-xs text-slate-500 font-semibold">（※バルカートルクシステム様の固定送信元情報はそのまま維持されます）</span>
+        </p>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onclick="closeModal('modal-reset')"
+            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded border transition"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onclick="executeReset()"
+            class="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-50 text-white rounded shadow transition bg-red-600"
+          >
+            はい、クリアする
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- カスタムプリセット削除確認モーダル (no-print) --- -->
+  <div id="modal-delete" class="no-print fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl shadow-xl border w-full max-w-sm overflow-hidden scale-95 transition-all">
+      <div class="bg-slate-800 text-white px-4 py-3 font-semibold flex justify-between items-center">
+        <span class="flex items-center gap-2">
+          <i data-lucide="trash-2" class="h-4 w-4 text-red-400"></i>
+          <span>プリセットの削除確認</span>
+        </span>
+        <button onclick="closeModal('modal-delete')" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      
+      <div class="p-5 space-y-4 font-sans">
+        <p class="text-sm text-slate-600 leading-relaxed">
+          送信先プリセット「<strong id="delete-preset-name" class="text-slate-900 font-bold"></strong>」を削除してもよろしいですか？
+        </p>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onclick="closeModal('modal-delete')"
+            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded border transition"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onclick="executeDeleteToPreset()"
+            class="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-50 text-white rounded shadow transition bg-red-600"
+          >
+            削除する
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- 送信先プリセット新規保存用モーダル (no-print) --- -->
+  <div id="modal-preset" class="no-print fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 hidden">
+    <div class="bg-white rounded-xl shadow-xl border w-full max-w-md overflow-hidden scale-95 transition-all">
+      <div class="bg-slate-800 text-white px-4 py-3 font-semibold flex justify-between items-center font-sans">
+        <span>送信先情報の保存</span>
+        <button onclick="closeModal('modal-preset')" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      
+      <div class="p-5 space-y-4 font-sans">
+        <p class="text-xs text-slate-500 font-sans">
+          現在宛先欄に入力されている「送信先（TO）」の情報を、いつでも呼び出せるよう名前をつけて保存します。
+        </p>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold text-slate-700">プリセットの登録名（識別名）</label>
+          <input
+            type="text"
+            id="input-newPresetName"
+            placeholder="例：テクノソリューションズ 山田様"
+            class="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-sans"
+          />
+        </div>
+
+        <!-- 現在のデータ要約プレビュー -->
+        <div class="bg-slate-50 p-3 rounded-lg border text-xs text-slate-600 space-y-1">
+          <div class="font-semibold text-slate-800">保存される宛先情報：</div>
+          <div id="summary-company">会社：</div>
+          <div id="summary-name">お名前：</div>
+          <div id="summary-fax">FAX：</div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onclick="closeModal('modal-preset')"
+            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded border transition"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onclick="saveAsToPreset()"
+            class="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded shadow transition flex items-center gap-1.5 font-sans"
+          >
+            <i data-lucide="save" class="h-3.5 w-3.5"></i>
+            <span>保存する</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- フッター (no-print) --- -->
+  <footer class="no-print bg-slate-800 text-slate-400 py-4 px-4 text-center text-xs border-t border-slate-700 shrink-0">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
+      <p>© 2026 FAX送信票作成ツール. All rights reserved.</p>
+      <div class="flex gap-4">
+        <span class="text-slate-500 font-sans">A4用紙1枚ぴったり設計</span>
+        <span class="text-slate-500 font-sans">ブラウザ内だけでデータ保存（サーバー送信なし）</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- --- アプリケーション状態 & ロジック制御スクリプト --- -->
+  <script>
+    // デフォルト送信元（バルカートルクシステム株式会社 固定仕様）
+    const DEFAULT_FROM = {
+      fromCompany: 'バルカートルクシステム株式会社',
+      fromDept: '',
+      fromName: '',
+      fromFax: '046-281-7622',
+      fromTel: '046-281-7621',
+      fromAddress: '〒243-0036 神奈川県厚木市長谷363-2',
+      fromEmail: '',
+    };
+
+    // 余白量設定
+    const spacingMap = {
+      tight: {
+        printPadding: '10mm',
+        titleMb: 'mb-1.5',
+        metaMb: 'mb-1.5',
+        gridMb: 'mb-2.5',
+        checkMb: 'mb-1.5',
+        subjectMb: 'mb-1.5',
+      },
+      normal: {
+        printPadding: '18mm',
+        titleMb: 'mb-3.5',
+        metaMb: 'mb-3.5',
+        gridMb: 'mb-4.5',
+        checkMb: 'mb-3.5',
+        subjectMb: 'mb-3.5',
+      },
+      loose: {
+        printPadding: '25mm',
+        titleMb: 'mb-5',
+        metaMb: 'mb-5',
+        gridMb: 'mb-5.5',
+        checkMb: 'mb-4.5',
+        subjectMb: 'mb-4.5',
+      },
+    };
+
+    // グローバル状態
+    let faxData = {
+      dateType: 'auto',
+      dateVal: '',
+      dateFreeText: '',
+      dateEraFormat: 'seireki',
+      pagesCount: 1,
+      subject: '',
+      toCompany: '',
+      toDept: '',
+      toName: '',
+      toHonorific: '様',
+      toFax: '',
+      toTel: '',
+      ...DEFAULT_FROM,
+      isUrgent: false,
+      isReplyRequired: false,
+      isCheckRequired: false,
+      isForReference: false,
+      message: 'お世話になっております。',
+      printSpacing: 'normal',
+      printFontSize: 'text-sm',
+      printLineHeight: 'leading-relaxed',
+    };
+
+    let toPresets = [];
+    let selectedPresetId = '';
+    let presetToDeleteId = '';
+    let toastTimer = null;
+    let currentActiveTab = 'edit';
+
+    // 画面ロード時の初期化
+    window.addEventListener('DOMContentLoaded', () => {
+      // Lucideアイコンのレンダリング
+      lucide.createIcons();
+
+      // 日付の初期設定 (今日)
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      // データのローカルストレージからのロード
+      const savedData = localStorage.getItem('fax_generator_last_data');
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          faxData = { ...faxData, ...parsed };
+        } catch (e) {
+          console.error('Error parsing saved data', e);
+        }
+      }
+
+      // 常時最新日付を設定
+      faxData.dateVal = todayStr;
+      if (faxData.dateType === 'auto') {
+        faxData.dateFreeText = getFormattedDateStr(todayStr, faxData.dateEraFormat);
+      }
+
+      // 送信元デフォルトの再固定（改ざん防止）
+      faxData.fromCompany = DEFAULT_FROM.fromCompany;
+      faxData.fromFax = DEFAULT_FROM.fromFax;
+      faxData.fromTel = DEFAULT_FROM.fromTel;
+      faxData.fromAddress = DEFAULT_FROM.fromAddress;
+
+      // プリセットデータのロード
+      const savedPresets = localStorage.getItem('fax_generator_to_presets');
+      if (savedPresets) {
+        try {
+          toPresets = JSON.parse(savedPresets);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // UIコントロールへのデータ同期＆反映
+      syncDataToUI();
+      renderPresetSelect();
+      checkOverflow();
+
+      // リサイズ時のはみ出しリアルタイム検出
+      window.addEventListener('resize', checkOverflow);
+    });
+
+    // 日付フォーマッタ関数
+    function getFormattedDateStr(dateStr, format) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+      if (format === 'wareki') {
+        let eraYear = year - 2018;
+        let eraName = '令和';
+        if (year < 2019) {
+          eraYear = year - 1988;
+          eraName = '平成';
+        }
+        const eraYearStr = eraYear === 1 ? '元' : eraYear;
+        return `${eraName}${eraYearStr}年 ${month}月 ${day}日 (${dayOfWeek})`;
+      }
+
+      return `${year}年 ${month}月 ${day}日 (${dayOfWeek})`;
+    }
+
+    // クイック日付設定
+    function setQuickDate(offset) {
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + offset);
+      const yyyy = targetDate.getFullYear();
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      faxData.dateType = 'auto';
+      faxData.dateVal = dateStr;
+      faxData.dateFreeText = getFormattedDateStr(dateStr, faxData.dateEraFormat);
+
+      document.getElementById('input-dateVal').value = dateStr;
+      changeDateType('auto');
+      syncDataToUI();
+      showNotification('日付を変更しました', 'info');
+    }
+
+    // インプット変更イベントの同期
+    function syncInput(field, value) {
+      faxData[field] = value;
+      
+      if (field === 'dateVal' && faxData.dateType === 'auto') {
+        faxData.dateFreeText = getFormattedDateStr(value, faxData.dateEraFormat);
+      }
+      if (field === 'dateEraFormat' && faxData.dateType === 'auto') {
+        faxData.dateFreeText = getFormattedDateStr(faxData.dateVal, value);
+      }
+
+      saveDataToLocalStorage();
+      syncDataToUI();
+      checkOverflow();
+    }
+
+    // 日付選択タイプ切り替え
+    function changeDateType(type) {
+      faxData.dateType = type;
+      const autoBtn = document.getElementById('dateType-auto-btn');
+      const freeBtn = document.getElementById('dateType-free-btn');
+      const autoContainer = document.getElementById('date-auto-container');
+      const freeContainer = document.getElementById('date-free-container');
+
+      if (type === 'auto') {
+        autoBtn.className = "px-2 py-1 rounded-md transition bg-white shadow text-blue-600";
+        freeBtn.className = "px-2 py-1 rounded-md transition text-slate-600";
+        autoContainer.classList.remove('hidden');
+        freeContainer.classList.add('hidden');
+        faxData.dateFreeText = getFormattedDateStr(faxData.dateVal, faxData.dateEraFormat);
+      } else {
+        autoBtn.className = "px-2 py-1 rounded-md transition text-slate-600";
+        freeBtn.className = "px-2 py-1 rounded-md transition bg-white shadow text-blue-600";
+        autoContainer.classList.add('hidden');
+        freeContainer.classList.remove('hidden');
+      }
+      saveDataToLocalStorage();
+      syncDataToUI();
+    }
+
+    // データのローカルストレージ保存
+    function saveDataToLocalStorage() {
+      localStorage.setItem('fax_generator_last_data', JSON.stringify(faxData));
+    }
+
+    // 枚数の直接増減
+    function adjustPages(val) {
+      const current = faxData.pagesCount;
+      const target = Math.max(1, current + val);
+      faxData.pagesCount = target;
+      document.getElementById('input-pagesCount').value = target;
+      saveDataToLocalStorage();
+      syncDataToUI();
+    }
+
+    // 状態を画面UI（プレビュー及びサイドバーインプット値）に強制同期
+    function syncDataToUI() {
+      // 1. サイドバーインプット側の同期
+      document.getElementById('input-toCompany').value = faxData.toCompany;
+      document.getElementById('input-toDept').value = faxData.toDept;
+      document.getElementById('input-toName').value = faxData.toName;
+      document.getElementById('input-toHonorific').value = faxData.toHonorific;
+      document.getElementById('input-toFax').value = faxData.toFax;
+      document.getElementById('input-toTel').value = faxData.toTel;
+
+      document.getElementById('input-fromCompany').value = faxData.fromCompany;
+      document.getElementById('input-fromDept').value = faxData.fromDept;
+      document.getElementById('input-fromName').value = faxData.fromName;
+      document.getElementById('input-fromFax').value = faxData.fromFax;
+      document.getElementById('input-fromTel').value = faxData.fromTel;
+      document.getElementById('input-fromAddress').value = faxData.fromAddress;
+      document.getElementById('input-fromEmail').value = faxData.fromEmail;
+
+      document.getElementById('input-dateVal').value = faxData.dateVal;
+      document.getElementById('input-dateFreeText').value = faxData.dateFreeText;
+      document.getElementById('input-dateEraFormat').value = faxData.dateEraFormat;
+      document.getElementById('input-pagesCount').value = faxData.pagesCount;
+
+      document.getElementById('input-isUrgent').checked = faxData.isUrgent;
+      document.getElementById('input-isReplyRequired').checked = faxData.isReplyRequired;
+      document.getElementById('input-isCheckRequired').checked = faxData.isCheckRequired;
+      document.getElementById('input-isForReference').checked = faxData.isForReference;
+
+      document.getElementById('input-subject').value = faxData.subject;
+      document.getElementById('input-message').value = faxData.message;
+
+      // 2. A4プレビュー側の同期
+      document.getElementById('preview-date').textContent = faxData.dateFreeText || '未入力';
+      document.getElementById('preview-pages').textContent = faxData.pagesCount;
+
+      // 送信先 (To) プレビュー
+      const toCompEl = document.getElementById('preview-toCompany');
+      if (faxData.toCompany) {
+        toCompEl.innerHTML = faxData.toCompany;
+        toCompEl.classList.remove('text-gray-300', 'font-normal');
+      } else {
+        toCompEl.innerHTML = '<span class="text-gray-300 font-normal">（送信先会社名）</span>';
+      }
+
+      const toDeptEl = document.getElementById('preview-toDept');
+      if (faxData.toDept) {
+        toDeptEl.innerHTML = faxData.toDept;
+        toDeptEl.classList.remove('text-gray-300', 'font-normal');
+      } else {
+        toDeptEl.innerHTML = '<span class="text-gray-300 font-normal">（部署名）</span>';
+      }
+
+      const toNameEl = document.getElementById('preview-toName');
+      if (faxData.toName) {
+        toNameEl.innerHTML = faxData.toName;
+        toNameEl.classList.remove('text-gray-300', 'font-normal');
+      } else {
+        toNameEl.innerHTML = '<span class="text-gray-300 font-normal">（ご担当者名）</span>';
+      }
+      document.getElementById('preview-toHonorific').textContent = faxData.toHonorific || '';
+
+      const toFaxEl = document.getElementById('preview-toFax');
+      if (faxData.toFax) {
+        toFaxEl.innerHTML = faxData.toFax;
+        toFaxEl.classList.remove('text-gray-300', 'font-normal', 'text-xs');
+      } else {
+        toFaxEl.innerHTML = '<span class="text-gray-300 font-normal text-xs">未入力</span>';
+      }
+      document.getElementById('preview-toTel').textContent = faxData.toTel || 'ー';
+
+      // 送信元 (From) プレビュー
+      document.getElementById('preview-fromCompany').textContent = faxData.fromCompany;
+      
+      const fromDeptEl = document.getElementById('preview-fromDept');
+      if (faxData.fromDept) {
+        fromDeptEl.textContent = faxData.fromDept;
+        fromDeptEl.classList.remove('hidden');
+      } else {
+        fromDeptEl.classList.add('hidden');
+      }
+
+      const fromNameEl = document.getElementById('preview-fromName');
+      if (faxData.fromName) {
+        fromNameEl.textContent = faxData.fromName;
+        fromNameEl.classList.remove('hidden');
+      } else {
+        fromNameEl.classList.add('hidden');
+      }
+
+      document.getElementById('preview-fromAddress').textContent = faxData.fromAddress;
+      const fromEmailEl = document.getElementById('preview-fromEmail');
+      if (faxData.fromEmail) {
+        fromEmailEl.textContent = `Email: ${faxData.fromEmail}`;
+        fromEmailEl.classList.remove('hidden');
+      } else {
+        fromEmailEl.classList.add('hidden');
+      }
+      document.getElementById('preview-fromFax').textContent = faxData.fromFax;
+      document.getElementById('preview-fromTel').textContent = faxData.fromTel;
+
+      // チェック用件プレビュー
+      toggleCheckState('urgent', faxData.isUrgent);
+      toggleCheckState('reply', faxData.isReplyRequired);
+      toggleCheckState('check', faxData.isCheckRequired);
+      toggleCheckState('reference', faxData.isForReference);
+
+      // 件名
+      const subjEl = document.getElementById('preview-subject');
+      if (faxData.subject) {
+        subjEl.innerHTML = faxData.subject;
+        subjEl.classList.remove('text-gray-300', 'font-normal');
+      } else {
+        subjEl.innerHTML = '<span class="text-gray-300 font-normal">（件名を入力してください）</span>';
+      }
+
+      // メッセージ本文
+      const msgBodyEl = document.getElementById('preview-message-body');
+      if (faxData.message) {
+        msgBodyEl.textContent = faxData.message;
+        msgBodyEl.classList.remove('text-gray-300');
+      } else {
+        msgBodyEl.innerHTML = '<span class="text-gray-300 font-sans">ここに連絡事項・送信メッセージが表示されます。</span>';
+      }
+
+      // レイアウト微調整の適用 (Spacing)
+      const printArea = document.getElementById('print-area-element');
+      const spacingTightBtn = document.getElementById('spacing-tight-btn');
+      const spacingNormalBtn = document.getElementById('spacing-normal-btn');
+      const spacingLooseBtn = document.getElementById('spacing-loose-btn');
+      const spacingLabel = document.getElementById('spacing-label');
+
+      // 余白リセット
+      printArea.classList.remove('p-[10mm]', 'p-[18mm]', 'p-[25mm]');
+      spacingTightBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      spacingNormalBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      spacingLooseBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+
+      const titleWrap = document.getElementById('preview-title-wrap');
+      const metaWrap = document.getElementById('preview-meta-wrap');
+      const gridWrap = document.getElementById('preview-grid-wrap');
+      const checkWrap = document.getElementById('preview-check-wrap');
+      const subjectWrap = document.getElementById('preview-subject-wrap');
+
+      titleWrap.classList.remove('mb-1.5', 'mb-3.5', 'mb-5');
+      metaWrap.classList.remove('mb-1.5', 'mb-3.5', 'mb-5');
+      gridWrap.classList.remove('mb-2.5', 'mb-4.5', 'mb-5.5');
+      checkWrap.classList.remove('mb-1.5', 'mb-3.5', 'mb-4.5');
+      subjectWrap.classList.remove('mb-1.5', 'mb-3.5', 'mb-4.5');
+
+      if (faxData.printSpacing === 'tight') {
+        printArea.classList.add('p-[10mm]');
+        spacingTightBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        spacingLabel.textContent = "狭い (10mm)";
+        titleWrap.classList.add('mb-1.5');
+        metaWrap.classList.add('mb-1.5');
+        gridWrap.classList.add('mb-2.5');
+        checkWrap.classList.add('mb-1.5');
+        subjectWrap.classList.add('mb-1.5');
+      } else if (faxData.printSpacing === 'loose') {
+        printArea.classList.add('p-[25mm]');
+        spacingLooseBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        spacingLabel.textContent = "広い (25mm)";
+        titleWrap.classList.add('mb-5');
+        metaWrap.classList.add('mb-5');
+        gridWrap.classList.add('mb-5.5');
+        checkWrap.classList.add('mb-4.5');
+        subjectWrap.classList.add('mb-4.5');
+      } else {
+        printArea.classList.add('p-[18mm]');
+        spacingNormalBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        spacingLabel.textContent = "標準 (18mm)";
+        titleWrap.classList.add('mb-3.5');
+        metaWrap.classList.add('mb-3.5');
+        gridWrap.classList.add('mb-4.5');
+        checkWrap.classList.add('mb-3.5');
+        subjectWrap.classList.add('mb-3.5');
+      }
+
+      // レイアウト微調整の適用 (Font Size)
+      const sizeXsBtn = document.getElementById('fontSize-xs-btn');
+      const sizeSmBtn = document.getElementById('fontSize-sm-btn');
+      const sizeBaseBtn = document.getElementById('fontSize-base-btn');
+      const sizeLgBtn = document.getElementById('fontSize-lg-btn');
+      const fontLabel = document.getElementById('font-size-label');
+
+      msgBodyEl.classList.remove('text-[11px]', 'md:text-xs', 'text-xs', 'md:text-sm', 'text-sm', 'md:text-base', 'text-base', 'md:text-lg');
+      sizeXsBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      sizeSmBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      sizeBaseBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      sizeLgBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+
+      if (faxData.printFontSize === 'text-xs') {
+        msgBodyEl.classList.add('text-[11px]', 'md:text-xs');
+        sizeXsBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        fontLabel.textContent = "極小 (11px)";
+      } else if (faxData.printFontSize === 'text-base') {
+        msgBodyEl.classList.add('text-sm', 'md:text-base');
+        sizeBaseBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        fontLabel.textContent = "標準 (14px)";
+      } else if (faxData.printFontSize === 'text-lg') {
+        msgBodyEl.classList.add('text-base', 'md:text-lg');
+        sizeLgBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        fontLabel.textContent = "大きめ (16px)";
+      } else {
+        msgBodyEl.classList.add('text-xs', 'md:text-sm');
+        sizeSmBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        fontLabel.textContent = "小さめ (12px)";
+      }
+
+      // レイアウト微調整の適用 (Line Height)
+      const lhSnugBtn = document.getElementById('lineHeight-snug-btn');
+      const lhNormalBtn = document.getElementById('lineHeight-normal-btn');
+      const lhRelaxedBtn = document.getElementById('lineHeight-relaxed-btn');
+      const lhLabel = document.getElementById('line-height-label');
+
+      msgBodyEl.classList.remove('leading-snug', 'leading-normal', 'leading-relaxed');
+      lhSnugBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      lhNormalBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+      lhRelaxedBtn.className = "flex-1 py-1 rounded-md font-medium transition text-slate-600 hover:bg-slate-100";
+
+      if (faxData.printLineHeight === 'leading-snug') {
+        msgBodyEl.classList.add('leading-snug');
+        lhSnugBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        lhLabel.textContent = "狭め";
+      } else if (faxData.printLineHeight === 'leading-normal') {
+        msgBodyEl.classList.add('leading-normal');
+        lhNormalBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        lhLabel.textContent = "標準";
+      } else {
+        msgBodyEl.classList.add('leading-relaxed');
+        lhRelaxedBtn.className = "flex-1 py-1 rounded-md font-medium transition bg-slate-800 text-white shadow";
+        lhLabel.textContent = "広め";
+      }
+    }
+
+    // チェック状態トグル補助
+    function toggleCheckState(type, isActive) {
+      const badge = document.getElementById(`badge-${type}`);
+      const check = document.getElementById(`check-${type}`);
+      
+      if (isActive) {
+        badge.classList.add('bg-gray-100', 'font-black');
+        check.classList.remove('hidden');
+      } else {
+        badge.classList.remove('bg-gray-100', 'font-black');
+        check.classList.add('hidden');
+      }
+    }
+
+    // はみ出し（Overflow）検知機能
+    function checkOverflow() {
+      const element = document.getElementById('preview-message-body');
+      if (element) {
+        const height = element.clientHeight;
+        const warningBar = document.getElementById('warning-overflow-bar');
+        const statusOk = document.getElementById('status-ok');
+        const statusOverflow = document.getElementById('status-overflow');
+        const printArea = document.getElementById('print-area-element');
+
+        if (height > 0) {
+          // 3pxのバッファを設定し誤検知を防止
+          const isOver = element.scrollHeight - height > 3;
+          
+          if (isOver) {
+            warningBar.classList.remove('hidden');
+            statusOk.classList.add('hidden');
+            statusOverflow.classList.remove('hidden');
+            printArea.classList.add('ring-2', 'ring-red-500');
+          } else {
+            warningBar.classList.add('hidden');
+            statusOk.classList.remove('hidden');
+            statusOverflow.classList.add('hidden');
+            printArea.classList.remove('ring-2', 'ring-red-500');
+          }
+        } else {
+          warningBar.classList.add('hidden');
+          statusOk.classList.remove('hidden');
+          statusOverflow.classList.add('hidden');
+          printArea.classList.remove('ring-2', 'ring-red-500');
+        }
+      }
+    }
+
+    // モバイル用タブ切り替え
+    function switchTab(tab) {
+      currentActiveTab = tab;
+      const sidebar = document.getElementById('sidebar-panel');
+      const preview = document.getElementById('preview-panel');
+      const tabEditBtn = document.getElementById('tab-edit-btn');
+      const tabPreviewBtn = document.getElementById('tab-preview-btn');
+
+      if (tab === 'edit') {
+        sidebar.classList.remove('hidden');
+        preview.classList.add('hidden', 'lg:flex');
+        tabEditBtn.className = "flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 bg-blue-50 text-blue-600 border-b-2 border-blue-600";
+        tabPreviewBtn.className = "flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 text-slate-600 bg-slate-50";
+      } else {
+        sidebar.classList.add('hidden');
+        preview.classList.remove('hidden', 'lg:flex');
+        tabEditBtn.className = "flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 text-slate-600 bg-slate-50";
+        tabPreviewBtn.className = "flex-1 py-3 text-center font-semibold text-sm flex items-center justify-center gap-2 bg-blue-50 text-blue-600 border-b-2 border-blue-600";
+        // プレビュー表示時に溢れを即チェック
+        setTimeout(checkOverflow, 50);
+      }
+    }
+
+    // ヘルプ表示トグル
+    function toggleHelp() {
+      const panel = document.getElementById('help-panel');
+      panel.classList.toggle('hidden');
+    }
+
+    // 別ウィンドウによる高精度印刷・PDF化
+    function handlePrint() {
+      const printContent = document.getElementById('print-area-element').innerHTML;
+      const printWindow = window.open('', '_blank', 'width=850,height=1100');
+      
+      if (!printWindow) {
+        showNotification('【警告】ブラウザのポップアップがブロックされました。お手数ですがポップアップを許可するか、「Ctrl+P」をお試しください。', 'error');
+        return;
+      }
+
+      let stylesHtml = '';
+      document.querySelectorAll('style, link[rel="stylesheet"]').forEach(style => {
+        stylesHtml += style.outerHTML;
+      });
+
+      const paddingValue = spacingMap[faxData.printSpacing]?.printPadding || '18mm';
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ja">
+          <head>
+            <meta charset="utf-8">
+            <title>FAX送信票_${faxData.toCompany || '印刷'}</title>
+            ${stylesHtml}
+            <style>
+              html, body {
+                background-color: #fff !important;
+                color: #000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: 100% !important;
+                overflow: hidden !important;
+                font-family: "IPAMincho", "BIZ UDPMincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .print-area {
+                width: 210mm !important;
+                height: 297mm !important;
+                max-width: 210mm !important;
+                max-height: 297mm !important;
+                border: none !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: ${paddingValue} !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                page-break-after: avoid !important;
+                page-break-before: avoid !important;
+                page-break-inside: avoid !important;
+              }
+              * {
+                overflow: hidden !important;
+              }
+              @page {
+                size: A4 portrait;
+                margin: 0;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="print-area">
+              ${printContent}
+            </div>
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                  window.close();
+                }, 400);
+              };
+            <\/script>
+          </body>
+        </html>
+      `);
+
+      printWindow.document.close();
+      showNotification('印刷ウィンドウを立ち上げました。', 'success');
+    }
+
+    // デモ用サンプルロード
+    function loadSampleData() {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      faxData = {
+        dateType: 'auto',
+        dateVal: todayStr,
+        dateFreeText: getFormattedDateStr(todayStr, 'seireki'),
+        dateEraFormat: 'seireki',
+        pagesCount: 3,
+        subject: '新型トルクツールの仕様お打合せについて',
+        toCompany: 'テクノロジーエンジニアリング株式会社',
+        toDept: '製造部 製造技術課',
+        toName: '佐藤 一郎',
+        toHonorific: '様',
+        toFax: '03-1111-2222',
+        toTel: '03-1111-2220',
+        ...DEFAULT_FROM,
+        fromDept: '営業部 推進グループ',
+        fromName: '厚木 太郎',
+        isUrgent: true,
+        isReplyRequired: true,
+        isCheckRequired: false,
+        isForReference: false,
+        message: `いつも大変お世話になっております。\nバルカートルクシステム株式会社の厚木でございます。\n\n先ほどお電話にてご相談させていただきました、新型トルクツールに関する詳細仕様のお打合せについて送付いたします。\n\nつきましては、借用いただく資料を添付の上お送りいたしますので、事前のご確認をいただけますと幸いです。\n\n【送付内容】\n1. FAX送付案内書（本紙） 1枚\n2. お打合せアジェンダ　 1枚\n3. 技術提案カタログ（抜粋） 1枚\n計 3枚\n\nご不明な点やお時間の変更等がございましたら、担当：厚木（TEL: 046-281-7621）まで直接ご連絡をよろしくお願い申し上げます。\nご多忙の中大変恐縮ですが、何卒よろしくお願い申し上げます。`,
+        printSpacing: 'normal',
+        printFontSize: 'text-sm',
+        printLineHeight: 'leading-relaxed',
+      };
+
+      changeDateType('auto');
+      saveDataToLocalStorage();
+      syncDataToUI();
+      showNotification('サンプルデータを読み込みました', 'success');
+    }
+
+    // モーダル制御
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.firstElementChild.classList.remove('scale-95');
+      }, 10);
+    }
+
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      modal.firstElementChild.classList.add('scale-95');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+      }, 150);
+    }
+
+    // リセット確認
+    function openResetConfirm() {
+      openModal('modal-reset');
+    }
+
+    // 実際のリセット実行
+    function executeReset() {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+
+      faxData = {
+        dateType: 'auto',
+        dateVal: todayStr,
+        dateFreeText: getFormattedDateStr(todayStr, 'seireki'),
+        dateEraFormat: 'seireki',
+        pagesCount: 1,
+        subject: '',
+        toCompany: '',
+        toDept: '',
+        toName: '',
+        toHonorific: '様',
+        toFax: '',
+        toTel: '',
+        ...DEFAULT_FROM,
+        fromDept: '',
+        fromName: '',
+        isUrgent: false,
+        isReplyRequired: false,
+        isCheckRequired: false,
+        isForReference: false,
+        message: 'お世話になっております。',
+        printSpacing: 'normal',
+        printFontSize: 'text-sm',
+        printLineHeight: 'leading-relaxed',
+      };
+
+      changeDateType('auto');
+      saveDataToLocalStorage();
+      syncDataToUI();
+      closeModal('modal-reset');
+      
+      const select = document.getElementById('to-preset-select');
+      select.value = "";
+      selectedPresetId = "";
+      document.getElementById('delete-preset-btn').classList.add('hidden');
+
+      showNotification('宛先・本文を初期化しました', 'info');
+    }
+
+    // プリセット保存モーダルを開く（名前の自動初期構築）
+    function handleOpenPresetModal() {
+      const company = faxData.toCompany ? faxData.toCompany.trim() : '';
+      const name = faxData.toName ? faxData.toName.trim() : '';
+      const honorific = faxData.toHonorific ? faxData.toHonorific.trim() : '';
+
+      let defaultName = '';
+      if (company && name) {
+        defaultName = `${company}_${name}${honorific}`;
+      } else if (company) {
+        defaultName = company;
+      } else if (name) {
+        defaultName = `${name}${honorific}`;
+      }
+
+      document.getElementById('input-newPresetName').value = defaultName;
+      document.getElementById('summary-company').textContent = `会社：${company || '(未入力)'}`;
+      document.getElementById('summary-name').textContent = `お名前：${name ? name + ' ' + honorific : '(未入力)'}`;
+      document.getElementById('summary-fax').textContent = `FAX：${faxData.toFax || '(未入力)'}`;
+
+      openModal('modal-preset');
+      setTimeout(() => {
+        document.getElementById('input-newPresetName').focus();
+      }, 160);
+    }
+
+    // プリセットの保存
+    function saveAsToPreset() {
+      const name = document.getElementById('input-newPresetName').value.trim();
+      if (!name) {
+        showNotification('プリセット名を入力してください。', 'error');
+        return;
+      }
+
+      const newPreset = {
+        id: Date.now().toString(),
+        name: name,
+        company: faxData.toCompany,
+        dept: faxData.toDept,
+        senderName: faxData.toName,
+        honorific: faxData.toHonorific,
+        fax: faxData.toFax,
+        tel: faxData.toTel,
+      };
+
+      toPresets.push(newPreset);
+      localStorage.setItem('fax_generator_to_presets', JSON.stringify(toPresets));
+      selectedPresetId = newPreset.id;
+
+      renderPresetSelect();
+      closeModal('modal-preset');
+      showNotification('送信先プリセットを保存しました', 'success');
+    }
+
+    // プリセット選択肢の描画
+    function renderPresetSelect() {
+      const select = document.getElementById('to-preset-select');
+      
+      // 初期化
+      select.innerHTML = '<option value="">-- 送信先プリセットから呼び出す --</option>';
+      
+      toPresets.forEach(preset => {
+        const option = document.createElement('option');
+        option.value = preset.id;
+        option.textContent = `${preset.name}（${preset.company || '個人宛'}）`;
+        select.appendChild(option);
+      });
+
+      select.value = selectedPresetId;
+      
+      // 削除ボタンの表示制御
+      const deleteBtn = document.getElementById('delete-preset-btn');
+      if (selectedPresetId) {
+        deleteBtn.classList.remove('hidden');
+      } else {
+        deleteBtn.classList.add('hidden');
+      }
+    }
+
+    // プリセットから情報をロード
+    function loadToPreset(presetId) {
+      selectedPresetId = presetId;
+      if (!presetId) {
+        document.getElementById('delete-preset-btn').classList.add('hidden');
+        return;
+      }
+
+      const preset = toPresets.find(p => p.id === presetId);
+      if (preset) {
+        faxData.toCompany = preset.company || '';
+        faxData.toDept = preset.dept || '';
+        faxData.toName = preset.senderName || '';
+        faxData.toHonorific = preset.honorific || '様';
+        faxData.toFax = preset.fax || '';
+        faxData.toTel = preset.tel || '';
+
+        saveDataToLocalStorage();
+        syncDataToUI();
+        checkOverflow();
+        
+        document.getElementById('delete-preset-btn').classList.remove('hidden');
+        showNotification('送信先情報をロードしました', 'success');
+      }
+    }
+
+    // プリセット削除要求
+    function requestDeleteToPreset() {
+      if (!selectedPresetId) return;
+      const preset = toPresets.find(p => p.id === selectedPresetId);
+      if (preset) {
+        presetToDeleteId = selectedPresetId;
+        document.getElementById('delete-preset-name').textContent = preset.name;
+        openModal('modal-delete');
+      }
+    }
+
+    // プリセットの実際の削除
+    function executeDeleteToPreset() {
+      if (!presetToDeleteId) return;
+
+      toPresets = toPresets.filter(p => p.id !== presetToDeleteId);
+      localStorage.setItem('fax_generator_to_presets', JSON.stringify(toPresets));
+
+      if (selectedPresetId === presetToDeleteId) {
+        selectedPresetId = '';
+      }
+      presetToDeleteId = '';
+
+      renderPresetSelect();
+      closeModal('modal-delete');
+      showNotification('プリセットを削除しました', 'info');
+    }
+
+    // バックアップデータのエクスポート (JSON形式)
+    function exportBackupData() {
+      const backupData = {
+        faxData: faxData,
+        toPresets: toPresets
+      };
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fax_generator_backup_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showNotification('設定データをファイルに書き出しました', 'success');
+    }
+
+    // インポートファイルの選択トリガー
+    function triggerImport() {
+      document.getElementById('import-file-input').click();
+    }
+
+    // バックアップデータのインポート
+    function importBackupData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.faxData && imported.toPresets) {
+            faxData = imported.faxData;
+            toPresets = imported.toPresets;
+            
+            // ローカルストレージに即時上書き保存
+            localStorage.setItem('fax_generator_last_data', JSON.stringify(faxData));
+            localStorage.setItem('fax_generator_to_presets', JSON.stringify(toPresets));
+            
+            // UI更新
+            syncDataToUI();
+            renderPresetSelect();
+            checkOverflow();
+            
+            showNotification('バックアップデータを正常に読み込みました', 'success');
+          } else {
+            showNotification('有効なバックアップファイルではありません', 'error');
+          }
+        } catch (err) {
+          console.error(err);
+          showNotification('ファイルの読み込みに失敗しました。JSON形式であることをご確認ください。', 'error');
+        }
+        event.target.value = ''; // フォームリセット
+      };
+      reader.readAsText(file);
+    }
+
+    // 自作トースト通知（iFrame・ポップアップ対応）
+    function showNotification(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      const msgText = document.getElementById('toast-message');
+      
+      const iconSuccess = document.getElementById('toast-icon-success');
+      const iconError = document.getElementById('toast-icon-error');
+      const iconInfo = document.getElementById('toast-icon-info');
+
+      // 既存アイコンをすべて隠す
+      iconSuccess.classList.add('hidden');
+      iconError.classList.add('hidden');
+      iconInfo.classList.add('hidden');
+
+      // タイプ別の設定
+      if (type === 'success') {
+        iconSuccess.classList.remove('hidden');
+      } else if (type === 'error') {
+        iconError.classList.remove('hidden');
+      } else {
+        iconInfo.classList.remove('hidden');
+      }
+
+      msgText.textContent = message;
+      toast.classList.remove('hidden');
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 4000);
+    }
+  </script>
+</body>
+</html>
